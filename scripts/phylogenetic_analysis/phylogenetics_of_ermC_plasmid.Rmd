@@ -7,12 +7,19 @@ output: html_document
 
 # Purpose: Evaluate phylogenetics of ermC plasmid in MRSA dataset
 # 
-# Methodology: Ancestral state reconstruction using phyloAMR (https://github.com/kylegontjes/phyloAMR)
+# Methodology: Ancestral state reconstruction of ermC plasmid trait using phyloAMR (https://github.com/kylegontjes/phyloAMR)
 ## 1. Identified ancestral states using phyloAMR's asr() function 
-## 2. Identified phylogenetic clusters of ermC plasmids using phyloAMR's asr_cluster_detection() function
-## 3. Visualization using ggtree and ggplot2 functions
+## 2. Identified phylogenetic events of ermC plasmids using phyloAMR's asr_cluster_detection() function
+## 3. Classified phylogenetic events of ermC plasmids using phyloAMR's asr_cluster_analysis() function
+## 4. Visualization of clustering across the phylogeny using ggtree 
+## 5. Visualization of clustering across the study period using ggplot2  
 # 
 # Working directory: /nfs/turbo/umms-esnitkin-secure/Project_MRSA/Analysis/2020-MRSA_jail_col_vs_inf/2025-05-29_phyloAMR
+## Tree: /nfs/turbo/umms-esnitkin-secure/Project_MRSA/Analysis/2020-MRSA_jail_col_vs_inf/2025-05-29_phyloAMR/combined_tree.treefile
+## Minimal datset: /nfs/turbo/umms-esnitkin-secure/Project_MRSA/Analysis/2020-MRSA_jail_col_vs_inf/2025-05-29_phyloAMR/combined_tree_metadata.csv
+## Code, final results, and figure in /nfs/turbo/umms-esnitkin-secure/Project_MRSA/Analysis/2020-MRSA_jail_col_vs_inf/2025-05-29_phyloAMR/thiede_steinberg_et_al_MRSA_ermC/
+# 
+# Github repo: https://github.com/sthiede/thiede_steinberg_et_al_MRSA_ermC/
 
 ```{r setup, include=FALSE}
 require(knitr)
@@ -23,6 +30,7 @@ opts_knit$set(root.dir='~/Desktop/armis_mount/')
 ```
 
 # Environment
+## The analyses was performed on Kyle Gontjes' core imaged Mac, issued by University of Michigan 
 ```{r}
 #Packages
 packages <- c("tidyverse",'ape','ggtree','phyloAMR','lubridate','kableExtra','ggtext')   
@@ -35,12 +43,10 @@ Sys.info()
 sessionInfo()  
 ```
 
+## Visualization function for tables
 ```{r}
-favorite_kable <- function (x) 
-{
-    x %>% kable(., format = "html", table.attr = "style='width:100%;'", 
-        row.names = F) %>% kable_styling(bootstrap_options = c("striped", 
-        "hover", "condensed", "responsive"))
+favorite_kable <- function(x){
+    x %>% kable(., format = "html", table.attr = "style='width:100%;'", row.names = F) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 }
 ```
 
@@ -54,28 +60,30 @@ df <- read.csv("./combined_tree_metadata.csv")
 df <- as.data.frame(df)
 ```
 
-# Manipulate data
+# Curate the data 
 ```{r}
 # Converted collect_date into a date
 df$date <- lubridate::as_date(df$collect_date)
+
+# Bin the dates by month to enable easy visualization in epicurve
 df$date_bin <- floor_date(df$date,'month') 
 
-# Add rownames
+# Add rownames to the dataframe
 rownames(df) <- df$seq_id
 ```
 
-# Manipulate phylogeny
+# Curate the phylogeny
 ```{r}
-# Midpoint phylogeny and match ordering
+# Midpoint phylogeny
 tr_midpoint <- phytools::midpoint.root(tr)
 tr_obj <- ggtree(tr_midpoint)
 
+# Match tree ordering
 df <-  df[match(tr_midpoint$tip.label, df[['seq_id']]), ]
 ```
 
-
 # Get ancestral state reconstruction of ermC plasmid
-## Generate using corHHM 
+## Generate using corHHM's joint ancestral state reconstruction algorithm
 ```{r}
 ermC_asr <- phyloAMR::asr(df = df, tr = tr_midpoint, tip_name_variable = "seq_id",trait = 'ermc', model = "MF", node_states = 'joint')
 
@@ -83,6 +91,7 @@ saveRDS(ermC_asr,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_analysis/
 ```
 
 ## Model statistics
+### phyloAMR's model finder optioned was performed to utilize the rate matrix with the best fit
 ```{r}
 ermC_asr$corHMM_model_statistics %>% favorite_kable()
 
@@ -90,8 +99,10 @@ write_csv(ermC_asr$corHMM_model_statistics,"./thiede_steinberg_et_al_MRSA_ermC/d
 ```
 
 ## Transition statistics
+### The number of transitions and continuation events across the edges of the phylogeny
+
 ```{r}
-transition_stats <- phyloAMR::asr_transition_analysis(ermC_asr$parent_child_df)
+transition_stats <- phyloAMR::asr_transition_analysis(ermC_asr$parent_child_df, node_states = "joint")
 
 transition_stats %>% favorite_kable()
 
@@ -101,12 +112,14 @@ write_csv(transition_stats,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic
 # Phylogenetic clustering of ermC plasmid using ancestral state reconstruction data
 ## Used phyloAMR's ancestral state reconstruction data and asr_cluster_detection() algorithm to identify isolates that shared ancestral gain events
 ```{r}
-ermC_asr_cluster <- asr_cluster_detection(df = df, tr = tr_midpoint, tip_name_variable = "seq_id",patient_id = 'patient_id',parent_child_df = ermC_asr$parent_child_df, node_states = 'joint', simplify_faux_clusters = TRUE, simplify_revertant = TRUE, collapse_cluster =  TRUE)
+ermC_asr_cluster <- asr_cluster_detection(df = df, tr = tr_midpoint, tip_name_variable = "seq_id",patient_id = 'patient_id', parent_child_df = ermC_asr$parent_child_df, node_states = 'joint', simplify_faux_clusters = TRUE, simplify_revertant = TRUE, collapse_cluster =  TRUE, confidence = NULL)
 
 write_csv(ermC_asr_cluster,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_analysis/ermC_ASR_clustering.csv")
 ```
 
-# Clustering statistics for ermC
+## Clustering statistics for ermC
+### The number of phylogenetic events (i.e., singletons and clusters)
+
 ```{r}
 cluster_stats <- asr_cluster_analysis(ermC_asr_cluster)
 
@@ -121,7 +134,7 @@ write_csv(cluster_stats,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_an
 ncluster <- cluster_stats$clusters
 
 color_palette <- grDevices::colors() %>% subset(grepl("red",.)==F)
-clusters_col <- hues::iwanthue(ncluster,hmin=13,hmax=360,lmin = 0,lmax = 100,cmin=0,cmax=180,random = F,plot = T)
+clusters_col <- hues::iwanthue(ncluster,hmin=13,hmax=360,lmin = 0,lmax = 100,cmin=0,cmax=180,random = F,plot = )
 clusters_name <- paste0("Cluster ",1:ncluster)
 names(clusters_col) <- clusters_name
 
@@ -129,6 +142,7 @@ cluster_scale <- scale_fill_manual(breaks =c("No feature","Singleton",names(clus
 ```
  
 ## Painted tree
+### We painted the edges with the presence (red) or absence (black) of the plasmid
 ```{r}
 custom_theme <- scale_color_manual(breaks = c(1,0), labels = c("Present","Absent"), values= c("red","black"), name = '*ErmC* Plasmid',guide = guide_legend(title.position = "top", label.position = "right",nrow=2,order=1))
 
@@ -177,9 +191,9 @@ A
 format <- theme(legend.position = "bottom",
                   axis.text =   element_text(size=18, color="black"),
                   axis.title = element_text(size = 20, color="black"),
+                  axis.ticks.length = unit(0.25, "cm"),
                   legend.text =   element_text(size=18, color="black"),
-                  legend.title = element_text(size = 20, color="black"),
-                  plot.title = element_text(size = 0, color="black")
+                  legend.title = element_text(size = 20, color="black")
 )
 
 theme_bw_me <- theme(panel.background = element_rect(fill = "white",colour = NA), panel.grid = element_blank(),
@@ -200,7 +214,9 @@ df$asr_cluster_renamed_rev <- factor(df$asr_cluster_renamed, levels = cluster_le
 
 ## Histogram
 ```{r, fig.height=7,fig.width=7.5}
-B <- ggplot(data = df, aes(x = date_bin, fill = fct_rev(fct_infreq(asr_cluster_renamed_rev)))) + geom_histogram(stat  = 'count') + format + theme_bw_me + theme(legend.position='none')  + xlab("Time (months)") + ylab("Number of isolates") +  cluster_scale 
+x_year_scale <-scale_x_date(date_breaks = "1 year",date_labels = "%Y")
+
+B <- ggplot(data = df, aes(x = date_bin, fill = fct_rev(fct_infreq(asr_cluster_renamed_rev)))) + geom_histogram(stat  = 'count') + format + theme_bw_me + theme(legend.position='none')  + xlab("Time (months)") + ylab("Number of isolates") +  cluster_scale + x_year_scale
 
 B
 ```
@@ -259,7 +275,8 @@ C <- ggplot(data = df, aes(x = date_bin, y = asr_cluster_renamed_rev, fill = asr
 C
 ```
 
-# Supplemental figure on phylogenetics of ermC in the dataset
+# Supplemental figure: Frequent emergence and spread of ermC plasmid-containing strains
+
 ```{r,fig.width=15,fig.height=20}
 cow_A <- cowplot::plot_grid(A,labels="A",label_size=24)
 cow_BC <- cowplot::plot_grid(B,C,ncol=2,labels=c("B","C"),label_size = 24)
