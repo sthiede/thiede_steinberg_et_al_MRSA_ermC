@@ -1,0 +1,274 @@
+---
+title: "Application of phyloAMR ancestral state reconstruction to evaluate phylogenetics of ermC"
+author: "Kyle Gontjes"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Purpose: Evaluate phylogenetics of ermC plasmid in MRSA dataset
+# 
+# Methodology: Ancestral state reconstruction using phyloAMR (https://github.com/kylegontjes/phyloAMR)
+## 1. Identified ancestral states using phyloAMR's asr() function 
+## 2. Identified phylogenetic clusters of ermC plasmids using phyloAMR's asr_cluster_detection() function
+## 3. Visualization using ggtree and ggplot2 functions
+# 
+# Working directory: /nfs/turbo/umms-esnitkin-secure/Project_MRSA/Analysis/2020-MRSA_jail_col_vs_inf/2025-05-29_phyloAMR
+
+```{r setup, include=FALSE}
+require(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+opts_knit$set(echo = T,warning = FALSE, message = FALSE,error=F,comment=NA) 
+opts_chunk$set(echo = T,warning = FALSE, message = FALSE,error=F,comment=NA)
+opts_knit$set(root.dir='~/Desktop/armis_mount/')
+```
+
+# Environment
+```{r}
+#Packages
+packages <- c("tidyverse",'ape','ggtree','phyloAMR','lubridate','kableExtra','ggtext')   
+#Load Packages
+invisible(lapply(packages,library,character.only=T,quietly=T))  
+# Seed
+set.seed(45)
+# Print
+Sys.info()
+sessionInfo()  
+```
+
+```{r}
+favorite_kable <- function (x) 
+{
+    x %>% kable(., format = "html", table.attr = "style='width:100%;'", 
+        row.names = F) %>% kable_styling(bootstrap_options = c("striped", 
+        "hover", "condensed", "responsive"))
+}
+```
+
+# Load data
+## 1. Data stored in /nfs/turbo/umms-esnitkin-secure/Project_MRSA/Analysis/2020-MRSA_jail_col_vs_inf/2025-05-29_phyloAMR
+### a. combined_tree.treefile: Phylogeny
+### b. combined_tree_metadata.csv: Dataframe with ermc, seq_id, patient_id, and collect_date variables
+```{r}
+tr <- read.tree("./combined_tree.treefile")
+df <- read.csv("./combined_tree_metadata.csv")
+df <- as.data.frame(df)
+```
+
+# Manipulate data
+```{r}
+# Converted collect_date into a date
+df$date <- lubridate::as_date(df$collect_date)
+df$date_bin <- floor_date(df$date,'month') 
+
+# Add rownames
+rownames(df) <- df$seq_id
+```
+
+# Manipulate phylogeny
+```{r}
+# Midpoint phylogeny and match ordering
+tr_midpoint <- phytools::midpoint.root(tr)
+tr_obj <- ggtree(tr_midpoint)
+
+df <-  df[match(tr_midpoint$tip.label, df[['seq_id']]), ]
+```
+
+
+# Get ancestral state reconstruction of ermC plasmid
+## Generate using corHHM 
+```{r}
+ermC_asr <- phyloAMR::asr(df = df, tr = tr_midpoint, tip_name_variable = "seq_id",trait = 'ermc', model = "MF", node_states = 'joint')
+
+saveRDS(ermC_asr,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_analysis/ermC_ASR_object.RDS")
+```
+
+## Model statistics
+```{r}
+ermC_asr$corHMM_model_statistics %>% favorite_kable()
+
+write_csv(ermC_asr$corHMM_model_statistics,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_analysis/ermC_ASR_model_statistics.csv")
+```
+
+## Transition statistics
+```{r}
+transition_stats <- phyloAMR::asr_transition_analysis(ermC_asr$parent_child_df)
+
+transition_stats %>% favorite_kable()
+
+write_csv(transition_stats,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_analysis/ermC_ASR_transition_statistics.csv")
+``` 
+
+# Phylogenetic clustering of ermC plasmid using ancestral state reconstruction data
+## Used phyloAMR's ancestral state reconstruction data and asr_cluster_detection() algorithm to identify isolates that shared ancestral gain events
+```{r}
+ermC_asr_cluster <- asr_cluster_detection(df = df, tr = tr_midpoint, tip_name_variable = "seq_id",patient_id = 'patient_id',parent_child_df = ermC_asr$parent_child_df, node_states = 'joint', simplify_faux_clusters = TRUE, simplify_revertant = TRUE, collapse_cluster =  TRUE)
+
+write_csv(ermC_asr_cluster,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_analysis/ermC_ASR_clustering.csv")
+```
+
+# Clustering statistics for ermC
+```{r}
+cluster_stats <- asr_cluster_analysis(ermC_asr_cluster)
+
+cluster_stats %>% favorite_kable()
+
+write_csv(cluster_stats,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_analysis/ermC_ASR_clustering_statistics.csv")
+```
+
+# Figure A - Phylogeny with clustering
+## Clustering scale
+```{r}
+ncluster <- cluster_stats$clusters
+
+color_palette <- grDevices::colors() %>% subset(grepl("red",.)==F)
+clusters_col <- hues::iwanthue(ncluster,hmin=13,hmax=360,lmin = 0,lmax = 100,cmin=0,cmax=180,random = F,plot = T)
+clusters_name <- paste0("Cluster ",1:ncluster)
+names(clusters_col) <- clusters_name
+
+cluster_scale <- scale_fill_manual(breaks =c("No feature","Singleton",names(clusters_col)),values=c("No feature" = "#A9A9A9","Singleton" = "red",clusters_col),labels=c("Absent","Singleton",clusters_name),name="Phylogenetics of the *ermC* plasmid", guide = guide_legend(order=2,ncol=8, title.position = "top", label.position = "right"))
+```
+ 
+## Painted tree
+```{r}
+custom_theme <- scale_color_manual(breaks = c(1,0), labels = c("Present","Absent"), values= c("red","black"), name = '*ErmC* Plasmid',guide = guide_legend(title.position = "top", label.position = "right",nrow=2,order=1))
+
+get_painted_tree_with_states <- function(parent_child_df,tr){
+    num_nodes <- nrow(tr$edge) + 1
+    root_node <- length(tr$tip.label) + 1
+    root_value <- unique(parent_child_df[parent_child_df$parent == 
+        root_node, "parent_value"])
+    parent_child_df <- parent_child_df[order(parent_child_df$child, 
+        decreasing = FALSE), ]
+    number_tips <- length(tr$tip.label)
+    outcome_str <- parent_child_df[parent_child_df$child <= number_tips, 
+        "child_value"]
+    parent_str <- parent_child_df[parent_child_df$child > number_tips, 
+        "child_value"]
+    state_df <- data.frame(node = seq_len(num_nodes), state = c(outcome_str, 
+        root_value, parent_str))
+    tr <- full_join(tr, state_df)
+    painted_tree <- ggtree(tr, mapping = aes(color = as.factor(state)),size=0.3) + 
+        custom_theme
+    return(painted_tree)
+}
+
+p1 <- get_painted_tree_with_states(ermC_asr$parent_child_df,tr = tr_midpoint) + custom_theme + theme(legend.position = 'bottom',legend.title = ggtext::element_markdown())
+
+p1
+```
+
+## Painted phylogeny with clustering data
+```{r,fig.height=14,fig.width=15}
+# Theme
+consistent_theme <- theme(legend.position = 'bottom',legend.direction="horizontal", legend.justification = "center", legend.key = element_rect(colour = c('black')),legend.box.spacing = unit(.0001, "cm"),legend.key.size = unit(.75, "cm"),legend.key.width = unit(.75, "cm"),legend.spacing.x=unit(.75, "cm"), legend.title = ggtext::element_markdown(size=20,hjust=0.5),legend.text = element_text(size=18,hjust=0),legend.spacing = unit(0,'cm'),legend.margin = margin(t=-1,b=0.25,unit='cm'))
+
+# Add new scale fill
+p1.1 <- p1 + ggnewscale::new_scale_fill()
+
+# Add matrix with cluster calls
+A <- gheatmap(p1.1, ermC_asr_cluster %>% select(asr_cluster_renamed)  %>% `colnames<-`("Plasmid clustering") %>% mutate_all(as.factor) , colnames_position = "top",colnames_angle=90, colnames_offset_y = 0.25, hjust = 0, color = NA, font.size = 6, width = .1,offset =0) + cluster_scale + ylim(NA,1250) + theme(legend.position = 'bottom') + consistent_theme
+ 
+A
+```
+
+# Figure B - Histogram with clustering over time
+## Themes
+```{r, fig.height=7,fig.width=7.5}
+format <- theme(legend.position = "bottom",
+                  axis.text =   element_text(size=18, color="black"),
+                  axis.title = element_text(size = 20, color="black"),
+                  legend.text =   element_text(size=18, color="black"),
+                  legend.title = element_text(size = 20, color="black"),
+                  plot.title = element_text(size = 0, color="black")
+)
+
+theme_bw_me <- theme(panel.background = element_rect(fill = "white",colour = NA), panel.grid = element_blank(),
+                     strip.background = element_rect(fill = "white",colour = "black"),
+                     panel.grid.major = element_blank(),
+                     panel.grid.minor = element_blank(),
+                     axis.line = element_line(colour = "black"),legend.position = "bottom")
+```
+
+## Add clustering data to metadata
+```{r, fig.height=7,fig.width=7.5}
+df <- left_join(df,ermC_asr_cluster %>% mutate(seq_id = tip_name)) 
+
+cluster_levels <- c(paste0("Cluster ",ncluster:1),"Singleton","No feature")
+
+df$asr_cluster_renamed_rev <- factor(df$asr_cluster_renamed, levels = cluster_levels,labels = gsub("No feature","Absent",cluster_levels))
+```
+
+## Histogram
+```{r, fig.height=7,fig.width=7.5}
+B <- ggplot(data = df, aes(x = date_bin, fill = fct_rev(fct_infreq(asr_cluster_renamed_rev)))) + geom_histogram(stat  = 'count') + format + theme_bw_me + theme(legend.position='none')  + xlab("Time (months)") + ylab("Number of isolates") +  cluster_scale 
+
+B
+```
+
+# Figure C - Duration of clusters in sample collection
+## Cluster isolate, patient, statistics  statistics
+```{r}
+groups <- c("Absent","Singleton",names(clusters_col))
+
+get_cluster_stats <- function(group){
+  df_sub <- df %>% subset(asr_cluster_renamed_rev == group)
+  n_isolates <- as.numeric(nrow(df_sub))
+  n_patients <- as.numeric(length(unique(df_sub$patient_id)))
+  subsequent_transmission <- as.numeric(n_patients - 1)
+  
+  sum <- as.data.frame(summary(df_sub$date)) %>% t %>% as.data.frame %>% `colnames<-`(snakecase::to_snake_case(colnames(.))) %>% mutate_all(lubridate::as_date)
+  sum$duration <- sum$max - sum$min 
+  cbind(group,n_isolates,n_patients,subsequent_transmission,sum) %>% `rownames<-`(NULL)
+}
+
+cluster_individual_data <- lapply(groups,get_cluster_stats) %>% do.call(rbind.data.frame,.) 
+
+cluster_individual_data %>% favorite_kable()
+
+write_csv(cluster_individual_data,"./thiede_steinberg_et_al_MRSA_ermC/data/phylogenetic_analysis/ermC_ASR_cluster_individual_data.csv")
+```
+
+## Differences in subsequent transmission events across clusters (i.e., n_patients - 1)
+```{r}
+cluster_only_individual_stats <- subset(cluster_individual_data,!group %in% c("Absent","Singleton"))
+
+summary(cluster_only_individual_stats$subsequent_transmission)
+```
+
+## Cluster duration differences
+```{r}
+summary(cluster_only_individual_stats$duration)
+```
+
+## Cluster duration boxplot
+```{r, fig.height=7,fig.width=7.5}
+# Edit y-axis
+groups <- levels(df$asr_cluster_renamed_rev)
+cluster_number_name <- sapply(groups,FUN=function(group_name,cluster_individual_data){
+  stats_sub <- subset(cluster_individual_data,group == group_name) 
+  n_patients <- stats_sub[["n_patients"]]
+  paste0(group_name," (n = ",n_patients,")") 
+},cluster_individual_data = cluster_individual_data) %>% `names<-`(groups) 
+
+# Recode y axis labels using cluster_number_name 
+recoded_y_scale <-  scale_y_discrete(labels = cluster_number_name)
+
+# Cluster duration in study
+C <- ggplot(data = df, aes(x = date_bin, y = asr_cluster_renamed_rev, fill = asr_cluster_renamed_rev))  + format + geom_boxplot() + theme_bw_me  + theme(legend.position='none') + xlab("Time (months)") + ylab("")+  cluster_scale + recoded_y_scale
+
+C
+```
+
+# Supplemental figure on phylogenetics of ermC in the dataset
+```{r,fig.width=15,fig.height=20}
+cow_A <- cowplot::plot_grid(A,labels="A",label_size=24)
+cow_BC <- cowplot::plot_grid(B,C,ncol=2,labels=c("B","C"),label_size = 24)
+
+final_figure <- cowplot::plot_grid(cow_A,cow_BC,ncol=1,labels = c("",""),rel_heights = c(1,0.50))
+
+final_figure
+```
+
+```{r}
+ggsave("./thiede_steinberg_et_al_MRSA_ermC/figures/s_figure_ermC_asr_clustering.png",plot = final_figure, dpi = 900, width = 15, height = 20,bg='white')
+``` 
