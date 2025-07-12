@@ -1,0 +1,12 @@
+[1] "The genomes are 2872915 bp long (including Ns and dashes)"
+[1] "There are 586 genomes"
+[1] "There are 17085 variant sites (defined as a position with more than one A, C, T or G"
+[1] "There are 335417 positions with at least one N or dash in at least one sample"
+[1] "Thus the core genome (positions with no Ns or dashes) size is 2537498"
+[1] "In the core genome, there are 14604 variant positions"
+[1] "Number of Ns per sample"
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+      0    6606    7286    6746    7292    7540 
+[1] "Number of dashes per sample"
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+      0     286    2191   13715   15862  104976 
