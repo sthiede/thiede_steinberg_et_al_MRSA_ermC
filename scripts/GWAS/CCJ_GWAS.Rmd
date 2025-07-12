@@ -1,0 +1,66 @@
+---
+title: "CCJ GWAS"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(exact2x2)
+library(ggplot2)
+
+#### READ IN METADATA
+jail_metadata = read_csv("../../CCJ_seq_data.csv")
+panaroo_jail= read_csv('../../CCJ_panaroo.csv')
+
+
+```
+
+
+```{r}
+#### FIGURE2 ----
+
+# order by jail_metadata
+panaroo_jail = panaroo_jail[,jail_metadata$seqnum]
+
+panaroo_jail = panaroo_jail %>%   
+  dplyr::filter(rowSums(panaroo_jail) < (ncol(panaroo_jail) - 1) & rowSums(panaroo_jail) > 1) # only tests genes that are present/absent in at least 2 samples
+
+
+jail_fe_results = t(apply(panaroo_jail, 1, function(row){
+  results = exact2x2(row, jail_metadata$in_cluster)
+  c(p = results$p.value, 
+    OR = results$estimate, 
+    CI_low = results$conf.int[1], 
+    CI_high = results$conf.int[2])
+  }))
+
+jail_fe_results = data.frame(jail_fe_results)
+jail_fe_results$log10p = -1 * log10(jail_fe_results$p)
+bonferroni = -1 * log10(.05/nrow(jail_fe_results))
+
+# add label for ermC and replication and maintenance protein  
+jail_fe_results$labels = row.names(jail_fe_results)
+jail_fe_results$labels[jail_fe_results$log10p < 10]   = ''
+jail_fe_results$labels[jail_fe_results$log10p > 10] = c('*ermC*', 'replication & maintenance protein')
+
+
+# add bonferonni correction line  geom_hline(yintercept = -1 * log10(bonferroni_p))
+volcano_plot <- ggplot(jail_fe_results, aes(x = OR.odds.ratio, y = log10p)) + 
+  geom_point(alpha = 0.5) +  
+  geom_text(aes(label = labels), hjust = 0, nudge_x = 0.5, size=6) + 
+  theme_bw() + 
+  theme(legend.position = 'none', 
+        text = element_text(size = 22), 
+        panel.border = element_blank()) + 
+  ylab('-log10 p value') + 
+  xlab('OR') +
+  geom_hline(aes(yintercept = bonferroni), color = "grey40")
+  
+volcano_plot
+```
+
