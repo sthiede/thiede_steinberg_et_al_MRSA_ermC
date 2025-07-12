@@ -1,0 +1,13 @@
+#!/bin/sh
+#SBATCH --job-name=kinship
+#SBATCH --output=linear_mixed_model_kinship_matrix_panaroo_vs_infection.out
+#SBATCH --mail-user=XXXXX
+#SBATCH --mail-type=NONE
+#SBATCH --export=ALL
+#SBATCH --partition=standard
+#SBATCH --account=XXXX
+#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1g --time=01:00:00
+cd $SLURM_SUBMIT_DIR
+echo $SLURM_SUBMIT_DIR
+echo $SLURM_JOB_ID
+python ~/pyseer/scripts/phylogeny_distance.py --lmm ../data/cdc_tree_rooted.tree > ../data/phylogeny_K.tsv

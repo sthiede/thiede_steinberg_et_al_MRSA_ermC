@@ -1,0 +1,13 @@
+#!/bin/sh
+#SBATCH --job-name=LMM_panaroo_vs_clindaR
+#SBATCH --output=linear_mixed_model_panaroo_vs_inf.out
+#SBATCH --mail-user=XXXX
+#SBATCH --mail-type=NONE
+#SBATCH --export=ALL
+#SBATCH --partition=standard
+#SBATCH --account=XXXX
+#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=1g --time=96:00:00
+cd $SLURM_SUBMIT_DIR
+echo $SLURM_SUBMIT_DIR
+echo $SLURM_JOB_ID
+pyseer --lmm --phenotypes ../data/pheno.tsv  --pres ../../2021-02-05_run_panaroo_cdc_genomes/data/moderate/gene_presence_absence.Rtab --similarity ../data/phylogeny_K.tsv --output-patterns panaroo_patterns.txt --cpu 1 > ../data/model_results/LMM_panaroo_vs_clindaR.txt
