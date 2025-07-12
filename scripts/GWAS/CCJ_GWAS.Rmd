@@ -30,7 +30,7 @@ panaroo_jail = panaroo_jail[,jail_metadata$seqnum]
 panaroo_jail = panaroo_jail %>%   
   dplyr::filter(rowSums(panaroo_jail) < (ncol(panaroo_jail) - 1) & rowSums(panaroo_jail) > 1) # only tests genes that are present/absent in at least 2 samples
 
-
+# in cluster defined by 20 SNV threshold 
 jail_fe_results = t(apply(panaroo_jail, 1, function(row){
   results = exact2x2(row, jail_metadata$in_cluster)
   c(p = results$p.value, 
