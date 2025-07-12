@@ -1,0 +1,72 @@
+---
+title: "CCH GWAS"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(exact2x2)
+library(ggplot2)
+
+#### READ IN METADATA
+cch_metadata = read_csv("../../data/CCH_seq_data.csv")
+panaroo_cch= read_csv('../../data/CCH_panaroo.csv')
+
+
+```
+
+```{r}
+
+
+#### SUPPLEMENTAL FIGURE ----
+
+# order by cch_metadata
+panaroo_cch = panaroo_cch[,cch_metadata$seq_id]
+
+panaroo_cch = panaroo_cch %>%   
+  dplyr::filter(rowSums(panaroo_cch) < (ncol(panaroo_cch) - 1) & rowSums(panaroo_cch) > 1) # only tests genes that are present/absent in at least 2 samples
+
+
+
+cch_fe_results = t(apply(panaroo_cch, 1, function(row){
+  results = exact2x2(row, cch_metadata$in_cluster)
+  c(p = results$p.value, 
+    OR = results$estimate, 
+    CI_low = results$conf.int[1], 
+    CI_high = results$conf.int[2])
+}))
+
+cch_fe_results = data.frame(cch_fe_results)
+
+cch_fe_results$log10p = -1 * log10(cch_fe_results$p)
+
+# add label for ermC and replication and maintenance protein  
+cch_fe_results$labels = row.names(cch_fe_results)
+cch_fe_results$labels[cch_fe_results$log10p < 9]   = ''
+cch_fe_results$labels[cch_fe_results$log10p > 9] = c('replication & maintenance protein', '*ermC*')
+
+# add bonferonni correction line  geom_hline(yintercept = -1 * log10(bonferroni_p))
+bonferroni = -1 * log10(.05/nrow(cch_fe_results))
+
+volcano_plot <- ggplot(cch_fe_results, aes(x = OR.odds.ratio, y = log10p)) + 
+  geom_point(alpha = 0.5) +  
+  geom_text(aes(label = labels), hjust = 0, nudge_x = 0.5, size=6) + 
+  #geom_richtext(aes(label = labels), hjust = 0, nudge_x = 0.5, size=6, fill = NA, label.color = NA) + 
+  theme_bw() + 
+  theme(legend.position = 'none', 
+        text = element_text(size = 22), 
+        panel.border = element_blank()) + 
+  ylab('-log10 p value') + 
+  xlab('OR') +
+  geom_hline(aes(yintercept = bonferroni), color = "grey40")
+
+volcano_plot
+
+```
+
