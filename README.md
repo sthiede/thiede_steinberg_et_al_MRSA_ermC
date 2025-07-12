@@ -14,6 +14,12 @@ Raw data provided on Github
 
 - GWAS: CCJ and CCH datasets; A Fisher’s exact test was conducted to assess the association between transmission and gene using the R package exact2x2 v1.6.5. We made the intentional decision not to explicitly control for population structure, as the clustering of strains is the signal we were trying to detect a genetic basis for. The relationship between odds ratio (OR) and p value was plotted and colored by gene. Significance was assessed with a Bonferonni-adjusted p value. We made the intentional decision not to explicitly control for population structure in our GWAS, as the clustering of strains is the signal we were trying to identify a genetic basis for. For example, using regression-based approaches that account for population structure by including a distance-matrix as a random effect, would control for the genetic clustering we are trying to detect.
 
+# Pyseer analysis
+Raw data not provided on Github 
+
+We used pyseer to confirm that the ermC-carrying plasmid was the only determinant of clindamycin resistance in this collection. 
+
+
 # Phylogenetic analysis
 Raw data not provided on Github
 
